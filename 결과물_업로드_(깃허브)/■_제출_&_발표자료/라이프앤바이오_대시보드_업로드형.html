@@ -1,0 +1,307 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<title>라이프앤바이오 자사몰 진단 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root{--teal:#0D5C63;--orange:#C2410C;--grey:#6B7280;--line:#E2E8F0;--mint:#ECFDF5;--bg:#F8FAFB}
+*{box-sizing:border-box}body{margin:0;font-family:"Malgun Gothic","Noto Sans CJK KR",sans-serif;color:#1F2937;background:var(--bg);font-size:14px}
+header{background:linear-gradient(135deg,#0D5C63,#0E7C86);color:#fff;padding:18px 26px}
+header h1{margin:0;font-size:19px}header .s{font-size:12px;opacity:.9;margin-top:3px}
+nav{display:flex;gap:6px;flex-wrap:wrap;background:#fff;border-bottom:1px solid var(--line);padding:9px 22px}
+nav button{border:0;background:#EFF3F4;color:var(--teal);font-weight:700;font-size:13px;padding:8px 15px;border-radius:8px;cursor:pointer}
+nav button.active{background:var(--teal);color:#fff}
+.wrap{max-width:1100px;margin:0 auto;padding:0 22px 30px}.tab{display:none;padding-top:14px}.tab.active{display:block}
+.lead{background:var(--mint);border-left:4px solid var(--teal);border-radius:8px;padding:11px 15px;margin:12px 0;font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px;margin:12px 0}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.kpi .v{font-size:22px;font-weight:800;color:var(--teal)}.kpi .v.o{color:var(--orange)}.kpi .l{font-size:12px;color:var(--grey);margin-top:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card h3{margin:0 0 6px;font-size:14px;color:var(--teal)}.chartbox{position:relative;height:230px}
+.note{font-size:12px;color:#475569;background:#FFF7ED;border-radius:8px;padding:8px 12px;margin-top:10px}
+.ptbl{width:100%;border-collapse:collapse;font-size:13px}
+.ptbl th,.ptbl td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.ptbl th{color:var(--grey);font-weight:700;font-size:12px;background:#F1F5F6}
+.ptbl th:first-child,.ptbl td.nm{text-align:left;white-space:normal}
+.ptbl tbody tr:hover{background:var(--mint)}
+.up{max-width:680px;margin:8vh auto;background:#fff;border:1px solid var(--line);border-radius:16px;padding:34px 36px;box-shadow:0 8px 30px rgba(13,92,99,.08)}
+.up h1{margin:0 0 6px;font-size:22px;color:var(--teal)}
+.up p{color:#52606D;font-size:13.5px;margin:4px 0 18px}
+.up .drop{border:2px dashed #BCCCD4;border-radius:12px;padding:22px;text-align:center;background:#F8FBFC}
+.up input[type=file]{font-size:13px}
+.up .rowf{display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.up select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px}
+.up button{background:var(--teal);color:#fff;border:0;font-weight:700;font-size:14px;padding:10px 22px;border-radius:9px;cursor:pointer}
+.up button:hover{background:#0E7C86}
+.up .status{margin-top:14px;font-size:13px;color:var(--teal);min-height:18px;font-weight:600}
+.up .hint{margin-top:16px;font-size:11.5px;color:#7B8794;line-height:1.6;background:#F7FAFB;border-radius:8px;padding:10px 12px}
+</style></head><body>
+
+<div id="uploader" class="up">
+  <h1>라이프앤바이오 자사몰 진단 대시보드</h1>
+  <p>원본 매출 CSV 파일을 올리면 브라우저에서 바로 분석합니다. 설치·서버 불필요.</p>
+  <div class="drop"><input type="file" id="files" multiple accept=".csv"></div>
+  <div class="rowf">
+    <label>인코딩
+      <select id="enc"><option value="auto">자동 감지</option><option value="utf-8">UTF-8</option><option value="euc-kr">CP949 / EUC-KR</option></select>
+    </label>
+    <button id="run">분석 실행</button>
+  </div>
+  <div class="status" id="status"></div>
+  <div class="hint">필요한 컬럼: <b>receiver_key, 판매처명, 입력일, 주문시간, 결제액, 주문구분, 품명</b>
+  · 여러 파일(sales_YYYY_MM.csv 등)을 한 번에 올려도 됩니다 · 한글이 깨지면 인코딩을 CP949로 바꾸세요
+  · 데이터는 <b>이 PC 브라우저 안에서만</b> 처리되며 외부로 전송되지 않습니다.</div>
+</div>
+
+<div id="dash" hidden>
+<header><h1>라이프앤바이오 자사몰 진단 대시보드</h1><div class="s">업로드 데이터 자동 분석 · 매출 기준</div></header>
+<nav id="nav"><button data-t="ov" class="active">개요</button><button data-t="ch">채널</button>
+<button data-t="gg">공구 전환</button><button data-t="cl">CLTV</button><button data-t="pr">제품</button></nav>
+<div class="wrap">
+<section class="tab active" id="ov"><div class="lead"><b>현 데이터에서는 신규 획득보다 전환·재구매 개선 효과가 더 크게 관찰됨.</b> 레버 = 채널 역할 재정의 · 멀티채널 유도 · 공구→자사 전환.</div>
+<div class="kpis"><div class="kpi"><div class="v" id="k1">-</div><div class="l">분석 고객 수</div></div>
+<div class="kpi"><div class="v" id="k2">-</div><div class="l">총 매출</div></div>
+<div class="kpi"><div class="v o" id="k3">-</div><div class="l">자사 재구매율</div></div>
+<div class="kpi"><div class="v o" id="k4">-</div><div class="l">공구→자사 전환율</div></div>
+<div class="kpi"><div class="v" id="k5">-</div><div class="l">멀티채널 매출 배수</div></div></div>
+<div class="card"><h3>채널별 매출</h3><div class="chartbox"><canvas id="c_ov"></canvas></div></div></section>
+<section class="tab" id="ch"><div class="card"><h3>채널 비교</h3><div id="ch_table"></div></div><div class="grid">
+<div class="card"><h3>채널별 매출(원)</h3><div class="chartbox"><canvas id="c_rev"></canvas></div></div>
+<div class="card"><h3>채널별 재구매율(%)</h3><div class="chartbox"><canvas id="c_re"></canvas></div></div>
+<div class="card"><h3>멀티채널 평균매출(원)</h3><div class="chartbox"><canvas id="c_mu"></canvas></div></div>
+<div class="card"><h3>채널별 AOV(원)</h3><div class="chartbox"><canvas id="c_aov"></canvas></div></div></div>
+<div class="note">D1·D2 — 스마트스토어가 실질 충성 회수 채널. 멀티채널 유도가 ROI 최고.</div></section>
+<section class="tab" id="gg"><div class="lead"><b>전환 정의</b> — 공구에서 첫 구매한 고객이 이후 <b>자사몰(고도몰·스마트스토어)에서 1회 이상 추가 구매</b>하면 '전환'으로 봅니다. 분석단위=고객(receiver_key), 동일일 통합 기준.</div><div class="kpis"><div class="kpi"><div class="v" id="g1">-</div><div class="l">공구 첫구매</div></div>
+<div class="kpi"><div class="v o" id="g2">-</div><div class="l">자사 전환</div></div>
+<div class="kpi"><div class="v" id="g3">-</div><div class="l">전환 첫 결제액</div></div></div><div class="grid">
+<div class="card"><h3>전환 누적</h3><div class="chartbox"><canvas id="c_cum"></canvas></div></div>
+<div class="card"><h3>전환 vs 미전환 첫 결제액</h3><div class="chartbox"><canvas id="c_cp"></canvas></div></div>
+<div class="card"><h3>셀러별 전환율(%)</h3><div class="chartbox"><canvas id="c_se"></canvas></div></div>
+<div class="card"><h3>공구 고객 채널 mix</h3><div class="chartbox"><canvas id="c_mx"></canvas></div></div></div>
+<div class="note">D3 — 낮은 전환율의 핵심은 전환 장치(CRM·동봉물) 부재.</div></section>
+<section class="tab" id="cl"><div id="cl_body"></div></section>
+<section class="tab" id="pr"><div class="kpis"><div class="kpi"><div class="v" id="p1">-</div><div class="l">1회 구매자 비중</div></div>
+<div class="kpi"><div class="v" id="p2">-</div><div class="l">제품 종류 수</div></div></div>
+<div class="card"><h3>제품별 매출 TOP 10</h3><div class="chartbox" style="height:340px"><canvas id="c_pr"></canvas></div></div>
+<div class="card"><h3>제품 포지셔닝 매트릭스 (x:구매자수 · y:재구매율 · 버블:매출)</h3><div class="chartbox" style="height:340px"><canvas id="c_matrix"></canvas></div></div>
+<div class="card"><h3>제품 상세 (매출 TOP 10)</h3><div id="prod_table"></div></div></section>
+</div></div>
+
+<script>
+/* ===== 전처리 사전 (노트북 재현) ===== */
+var B2B=['롯데면세점월드타워점','모노랩스','다이동코리아(흑보목)','테니스메트로','37디그리스','무난','무난2위탁이동','미라클','코디피아','효인ENG','[오프라인]약국판매','신세계면세점','쇼킹FC','태국B2C','시즈노프SCBC','대전장애인옥상텃밭','K리그물품후원'];
+var FREE=['기부','협찬','협찬_협찬_000','샘플출고_샘플_000','샘플[공동구매]000','임직원선물','굿바이팩(라이프앤바이오)','복리후생','noname','대표님출고요청건','모건스탠리'];
+var _B2B={},_FREE={};
+B2B.forEach(function(x){_B2B[x.replace(/ /g,'')]=1;});
+FREE.forEach(function(x){_FREE[x.replace(/ /g,'')]=1;});
+var OWN=['자사몰','자사몰_N'];
+var LABEL={'자사몰':'고도몰','자사몰_N':'스마트스토어','공구':'공구','외부몰':'외부몰'};
+function classify(name){var n=String(name==null?'':name).trim().replace(/ /g,'');
+ if(_FREE[n])return '무상'; if(_B2B[n])return 'B2B';
+ if(n.indexOf('고도몰')>=0)return '자사몰'; if(n.indexOf('스마트스토어')>=0)return '자사몰_N';
+ if(n.indexOf('공동구매')>=0)return '공구'; return '외부몰';}
+function extractSeller(name){var n=String(name==null?'':name).trim().replace(/ /g,'');
+ if(_FREE[n]||n.indexOf('공동구매')<0)return null;
+ var s=n.replace(/^.*공동구매\]?/,'').replace(/[\[\]]/g,'').trim(); return s?s:null;}
+function toNum(v){var x=parseFloat(String(v==null?'':v).replace(/[^0-9.\-]/g,'')); return isNaN(x)?0:x;}
+function dayKey(s){if(s==null)return null; s=String(s);
+ var m=s.match(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/); if(!m)m=s.match(/(\d{4})(\d{2})(\d{2})/);
+ if(!m)return null; return m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2);}
+function dn(dk){var p=dk.split('-'); return Date.UTC(+p[0],+p[1]-1,+p[2])/86400000;}
+
+/* ===== CSV → M (지표 객체) ===== */
+function compute(rows){
+ var recs=[],i,r;
+ for(i=0;i<rows.length;i++){r=rows[i];
+  var rid=String(r['receiver_key']==null?'':r['receiver_key']).trim(); if(!rid)continue;
+  var name=r['판매처명'], ch=classify(name);
+  var dk=(ch==='공구')?dayKey(r['입력일']):dayKey(r['주문시간']);
+  var cancel=/취소|반품|환불/.test(String(r['주문구분']==null?'':r['주문구분']));
+  var prod=r['품명']; prod=(prod==null||prod==='')?'(미상)':prod;
+  recs.push({rid:rid,ch:ch,pay:toNum(r['결제액']),cancel:cancel,dk:dk,seller:extractSeller(name),prod:prod});}
+ var valid=recs.filter(function(r){return r.pay>0 && !r.cancel && r.dk;});
+ if(!valid.length) throw new Error('유효한 주문이 없습니다. 컬럼/인코딩을 확인하세요.');
+ var M={};
+ var custAll={}; var totalRev=0;
+ valid.forEach(function(r){custAll[r.rid]=1; totalRev+=r.pay;});
+ M.nCustomers=Object.keys(custAll).length; M.totalRev=totalRev;
+
+ // 채널
+ var CH=['자사몰','자사몰_N','공구','외부몰'];
+ M.channel=CH.map(function(c){
+  var rev=0,days={},ordSet={};
+  valid.forEach(function(r){if(r.ch!==c)return; rev+=r.pay;
+   if(!days[r.rid])days[r.rid]={}; days[r.rid][r.dk]=1; ordSet[r.rid+'|'+r.dk]=1;});
+  var ids=Object.keys(days),reb=0;
+  ids.forEach(function(id){if(Object.keys(days[id]).length>=2)reb++;});
+  var orders=Object.keys(ordSet).length;
+  return {name:LABEL[c],rev:rev,customers:ids.length,reorder:ids.length?reb/ids.length*100:0,aov:orders?rev/orders:0};});
+
+ // 멀티채널
+ var spend={},chans={};
+ valid.forEach(function(r){spend[r.rid]=(spend[r.rid]||0)+r.pay; if(!chans[r.rid])chans[r.rid]={}; chans[r.rid][r.ch]=1;});
+ var goS=0,goN=0,smS=0,smN=0,boS=0,boN=0;
+ Object.keys(spend).forEach(function(id){var s=chans[id],go=!!s['자사몰'],sm=!!s['자사몰_N'],v=spend[id];
+  if(go&&!sm){goS+=v;goN++;} else if(sm&&!go){smS+=v;smN++;} if(go&&sm){boS+=v;boN++;}});
+ M.multi={godoOnly:goN?goS/goN:0,smartOnly:smN?smS/smN:0,both:boN?boS/boN:0};
+
+ // 1회/재구매 (자사)
+ var ownDays={};
+ valid.forEach(function(r){if(OWN.indexOf(r.ch)<0)return; if(!ownDays[r.rid])ownDays[r.rid]={}; ownDays[r.rid][r.dk]=1;});
+ var oids=Object.keys(ownDays),one=0;
+ oids.forEach(function(id){if(Object.keys(ownDays[id]).length===1)one++;});
+ M.oneTimeRatio=oids.length?one/oids.length*100:0; M.ownReorder=100-M.oneTimeRatio;
+
+ // 공구 전환
+ var ggByRid={};
+ valid.forEach(function(r){if(r.ch!=='공구')return; if(!ggByRid[r.rid])ggByRid[r.rid]=[]; ggByRid[r.rid].push(r);});
+ var ownDates={};
+ valid.forEach(function(r){if(OWN.indexOf(r.ch)<0)return; if(!ownDates[r.rid])ownDates[r.rid]=[]; ownDates[r.rid].push(dn(r.dk));});
+ var cum={d30:0,d60:0,d90:0,d180:0},cp=[],npay=[],ggo=0,conv=0,sellerAgg={};
+ var ggIds=Object.keys(ggByRid);
+ ggIds.forEach(function(id){var arr=ggByRid[id];
+  arr.sort(function(a,b){return dn(a.dk)-dn(b.dk);});
+  var fdn=dn(arr[0].dk),pay=arr[0].pay,seller=arr[0].seller||'(미상)';
+  var od=(ownDates[id]||[]).filter(function(x){return x>fdn;}).sort(function(a,b){return a-b;});
+  var ic=od.length>0;
+  if(!ownDates[id])ggo++;
+  if(ic){var ddv=od[0]-fdn; if(ddv<=30)cum.d30++; if(ddv<=60)cum.d60++; if(ddv<=90)cum.d90++; if(ddv<=180)cum.d180++; cp.push(pay); conv++;}
+  else npay.push(pay);
+  if(!sellerAgg[seller])sellerAgg[seller]={size:0,conv:0}; sellerAgg[seller].size++; if(ic)sellerAgg[seller].conv++;});
+ var nGG=ggIds.length;
+ function mean(a){return a.length?a.reduce(function(x,y){return x+y;},0)/a.length:0;}
+ M.conv={ggCusts:nGG,converted:conv,rate:nGG?conv/nGG*100:0,cum:cum,convPay:mean(cp),nonPay:mean(npay),ggOnly:nGG?ggo/nGG*100:0};
+ M.sellers=Object.keys(sellerAgg).filter(function(k){return sellerAgg[k].size>=30;})
+  .map(function(k){return {name:k,n:sellerAgg[k].size,rate:sellerAgg[k].conv/sellerAgg[k].size*100};})
+  .sort(function(a,b){return b.rate-a.rate;}).slice(0,8);
+
+ // 제품
+ var prodRev={};
+ valid.forEach(function(r){prodRev[r.prod]=(prodRev[r.prod]||0)+r.pay;});
+ var top=Object.keys(prodRev).sort(function(a,b){return prodRev[b]-prodRev[a];}).slice(0,10);
+ M.products=top.map(function(nm){
+  var rev=0,days={},ordSet={};
+  valid.forEach(function(r){if(r.prod!==nm)return; rev+=r.pay;
+   if(!days[r.rid])days[r.rid]={}; days[r.rid][r.dk]=1; ordSet[r.rid+'|'+r.dk]=1;});
+  var ids=Object.keys(days),reb=0; ids.forEach(function(id){if(Object.keys(days[id]).length>=2)reb++;});
+  var orders=Object.keys(ordSet).length;
+  return {name:nm,rev:rev,buyers:ids.length,reorder:ids.length?reb/ids.length*100:0,aov:orders?rev/orders:0};});
+ var prodSet={}; valid.forEach(function(r){prodSet[r.prod]=1;}); M.nProd=Object.keys(prodSet).length;
+
+ // CLTV (브라우저판: 관측 누적 구매가치 기준 ABC)
+ var ownSpend={},ownDc={};
+ valid.forEach(function(r){if(OWN.indexOf(r.ch)<0)return; ownSpend[r.rid]=(ownSpend[r.rid]||0)+r.pay;
+  if(!ownDc[r.rid])ownDc[r.rid]={}; ownDc[r.rid][r.dk]=1;});
+ var rep=[]; Object.keys(ownSpend).forEach(function(id){if(Object.keys(ownDc[id]||{}).length>=2)rep.push(ownSpend[id]);});
+ rep.sort(function(a,b){return b-a;});
+ var tot=rep.reduce(function(x,y){return x+y;},0),cumv=0,sc={A:0,B:0,C:0},ss={A:0,B:0,C:0};
+ rep.forEach(function(v){cumv+=v; var rr=tot?cumv/tot:1; var s=rr<=0.7?'A':(rr<=0.9?'B':'C'); sc[s]++; ss[s]+=v;});
+ M.cltv=rep.length?{n:rep.length,seg:['A','B','C'].map(function(s){return {seg:s,n:sc[s],sum:ss[s]};})}:null;
+ return M;
+}
+
+/* ===== 렌더링 ===== */
+var M=null, cl=[], col=null;
+var won=function(v){v=Math.round(v);var a=Math.abs(v),f=function(n,u){return (n.toFixed(1).replace(/\.0$/,''))+u;};return a>=1e8?f(v/1e8,'억원'):a>=1e4?f(v/1e4,'만원'):v.toLocaleString()+'원';};
+function fresh(id){var e=document.getElementById(id);if(!e)return null;var x=Chart.getChart(e);if(x)x.destroy();return e;}
+function bar(id,labels,data,colors,o){o=o||{};var e=fresh(id);if(!e)return;
+ new Chart(e,{type:'bar',data:{labels:labels,datasets:[{data:data,backgroundColor:colors,borderRadius:5,maxBarThickness:46}]},
+ options:{responsive:true,maintainAspectRatio:false,indexAxis:o.h?'y':'x',
+ scales:{x:{ticks:{autoSkip:false,maxRotation:o.h?0:35,font:{size:10}}},y:{beginAtZero:true,ticks:{callback:function(v){return o.won?won(v):v+(o.suf||'');}}}},
+ plugins:{tooltip:{callbacks:{label:function(c){return o.won?won(c.raw):c.raw+(o.suf||'');}}}}}});}
+function kpi(){var m=M.multi,mult=m.both?(m.both/((m.godoOnly+m.smartOnly)/2)):NaN;
+ document.getElementById('k1').textContent=M.nCustomers.toLocaleString();
+ document.getElementById('k2').textContent=won(M.totalRev);
+ document.getElementById('k3').textContent=M.ownReorder.toFixed(1)+'%';
+ document.getElementById('k4').textContent=M.conv.rate.toFixed(1)+'%';
+ document.getElementById('k5').textContent=(mult===mult?mult.toFixed(1):'-')+'배';
+ document.getElementById('g1').textContent=M.conv.ggCusts.toLocaleString();
+ document.getElementById('g2').textContent=M.conv.converted.toLocaleString()+' ('+M.conv.rate.toFixed(1)+'%)';
+ document.getElementById('g3').textContent=won(M.conv.convPay);
+ document.getElementById('p1').textContent=M.oneTimeRatio.toFixed(1)+'%';
+ document.getElementById('p2').textContent=M.nProd.toLocaleString();}
+function renderChTable(){var el=document.getElementById('ch_table');if(!el)return;
+ var tc=M.channel.reduce(function(a,c){return a+c.customers;},0),tr=M.channel.reduce(function(a,c){return a+c.rev;},0);
+ var h='<table class="ptbl"><thead><tr><th>채널</th><th>고객수</th><th>고객비중</th><th>매출비중</th><th>재구매율</th><th>AOV</th></tr></thead><tbody>';
+ M.channel.forEach(function(c){h+='<tr><td class="nm">'+c.name+'</td><td>'+c.customers.toLocaleString()+'명</td><td>'+(tc?c.customers/tc*100:0).toFixed(1)+'%</td><td>'+(tr?c.rev/tr*100:0).toFixed(1)+'%</td><td>'+c.reorder.toFixed(1)+'%</td><td>'+won(c.aov)+'</td></tr>';});
+ el.innerHTML=h+'</tbody></table>';}
+function renderProdTable(){var el=document.getElementById('prod_table');if(!el)return;
+ var h='<table class="ptbl"><thead><tr><th>제품</th><th>매출</th><th>구매자수</th><th>재구매율</th><th>객단가</th></tr></thead><tbody>';
+ M.products.forEach(function(p){h+='<tr><td class="nm">'+p.name+'</td><td>'+won(p.rev)+'</td><td>'+p.buyers.toLocaleString()+'명</td><td>'+p.reorder.toFixed(1)+'%</td><td>'+won(p.aov)+'</td></tr>';});
+ el.innerHTML=h+'</tbody></table>';}
+function draw(t){
+ var TEAL='#0E7C86',OR='#C2410C',GR='#94A3B8',BL='#0369A1';
+ if(t==='ov')bar('c_ov',cl,M.channel.map(function(c){return c.rev;}),col,{won:1});
+ if(t==='ch'){renderChTable();bar('c_rev',cl,M.channel.map(function(c){return c.rev;}),col,{won:1});
+  bar('c_re',cl,M.channel.map(function(c){return +c.reorder.toFixed(1);}),col,{suf:'%'});
+  bar('c_mu',['고도몰 only','스마트 only','둘 다'],[M.multi.godoOnly,M.multi.smartOnly,M.multi.both].map(Math.round),[GR,GR,OR],{won:1});
+  bar('c_aov',cl,M.channel.map(function(c){return Math.round(c.aov);}),col,{won:1});}
+ if(t==='gg'){var e=fresh('c_cum');if(e)new Chart(e,{type:'line',data:{labels:['D+30','D+60','D+90','D+180'],
+   datasets:[{data:['d30','d60','d90','d180'].map(function(k){return M.conv.cum[k];}),borderColor:OR,backgroundColor:'rgba(194,65,12,.12)',fill:true,tension:.3,pointRadius:4}]},
+   options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true}}}});
+  bar('c_cp',['전환','미전환'],[Math.round(M.conv.convPay),Math.round(M.conv.nonPay)],[TEAL,GR],{won:1});
+  bar('c_se',M.sellers.map(function(s){return s.name;}),M.sellers.map(function(s){return +s.rate.toFixed(1);}),M.sellers.map(function(s,i){return i<2?OR:i<4?TEAL:GR;}),{h:1,suf:'%'});
+  bar('c_mx',['공구만','자사 정착·혼합'],[+M.conv.ggOnly.toFixed(1),+(100-M.conv.ggOnly).toFixed(1)],[GR,TEAL],{suf:'%'});}
+ if(t==='cl'){var b=document.getElementById('cl_body');
+  if(!M.cltv){b.innerHTML='<div class="lead">자사 반복고객 표본이 부족해 등급 산출이 생략되었습니다.</div>';return;}
+  b.innerHTML='<div class="lead"><b>ABC 고객 등급</b> — 자사몰 반복구매 고객을 누적 구매가치(매출)가 높은 순으로 줄세워 <b>A=상위 누적 70%</b>, <b>B=다음 20%</b>, <b>C=나머지 10%</b>로 나눈 것입니다. 인원이 아니라 <b>가치 기여</b> 기준이라 소수의 A등급이 전체 가치의 대부분을 만듭니다. → <b>A=이탈 방어, B=A로 승급, C=재활성</b> 타깃.</div>'+
+   '<div class="grid"><div class="card"><h3>ABC 등급별 고객수</h3><div class="chartbox"><canvas id="c_segn"></canvas></div></div>'+
+   '<div class="card"><h3>등급별 합계 가치(누적 매출)</h3><div class="chartbox"><canvas id="c_segr"></canvas></div></div></div>'+
+   '<div class="note">산출 방법 — 자사몰 반복고객 '+M.cltv.n.toLocaleString()+'명을 <b>관측된 누적 구매액(매출 기준)</b> 높은 순으로 정렬해 누적기여 70/90% 컷으로 A·B·C 분할. (브라우저판은 예측모델 대신 관측 누적가치를 사용 — 미래 예측 CLTV가 필요하면 노트북판을 사용)</div>';
+  var sg=M.cltv.seg;bar('c_segn',sg.map(function(s){return s.seg;}),sg.map(function(s){return s.n;}),[TEAL,BL,GR]);
+  bar('c_segr',sg.map(function(s){return s.seg;}),sg.map(function(s){return s.sum;}),[TEAL,BL,GR],{won:1});}
+ if(t==='pr'){var e2=fresh('c_pr');
+  if(e2){var cols=M.products.map(function(p,i){return 'hsl(187,'+(58-i*2)+'%,'+(26+i*3.4)+'%)';});
+   new Chart(e2,{type:'bar',data:{labels:M.products.map(function(p){return p.name.length>22?p.name.slice(0,22)+'…':p.name;}),
+    datasets:[{data:M.products.map(function(p){return p.rev;}),backgroundColor:cols,borderRadius:5,maxBarThickness:30}]},
+    options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+     scales:{x:{display:false,beginAtZero:true},y:{ticks:{autoSkip:false,font:{size:11}}}},
+     plugins:{tooltip:{callbacks:{label:function(c){return won(c.raw);}}}}}});}
+  var em=fresh('c_matrix');
+  if(em){var mx=Math.max.apply(null,M.products.map(function(p){return p.rev;}))||1;
+   var ds=M.products.map(function(p,i){var c='hsl(187,'+(56-i*2)+'%,'+(30+i*3)+'%)';
+    return {label:p.name.length>16?p.name.slice(0,16)+'…':p.name,
+     data:[{x:p.buyers,y:p.reorder,r:6+Math.sqrt(p.rev/mx)*26,_rev:p.rev}],
+     backgroundColor:c.replace('hsl(','hsla(').replace(')',',.6)'),borderColor:c,borderWidth:1};});
+   new Chart(em,{type:'bubble',data:{datasets:ds},
+    options:{responsive:true,maintainAspectRatio:false,
+     plugins:{legend:{display:true,position:'right',labels:{boxWidth:9,font:{size:10}}},
+      tooltip:{callbacks:{label:function(c){return c.dataset.label+' · 구매자 '+c.raw.x.toLocaleString()+'명 · 재구매 '+c.raw.y.toFixed(1)+'% · 매출 '+won(c.raw._rev);}}}},
+     scales:{x:{title:{display:true,text:'구매자수(명)'},beginAtZero:true},y:{title:{display:true,text:'재구매율(%)'},beginAtZero:true}}}});}
+  renderProdTable();}}
+var navWired=false;
+function initDash(){
+ Chart.defaults.font.family='Malgun Gothic, Noto Sans CJK KR, sans-serif';Chart.defaults.plugins.legend.display=false;
+ cl=M.channel.map(function(c){return c.name;}); col=['#0369A1','#0E7C86','#C2410C','#94A3B8'];
+ document.getElementById('uploader').hidden=true; document.getElementById('dash').hidden=false;
+ if(!navWired){navWired=true;
+  document.querySelectorAll('#nav button').forEach(function(b){b.onclick=function(){
+   document.querySelectorAll('#nav button').forEach(function(x){x.classList.remove('active');});
+   document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');});
+   b.classList.add('active');document.getElementById(b.dataset.t).classList.add('active');draw(b.dataset.t);};});}
+ kpi();draw('ov');}
+
+/* ===== 업로드 처리 ===== */
+function status(m){document.getElementById('status').textContent=m;}
+function readFile(file,enc){return new Promise(function(res,rej){var fr=new FileReader();
+ fr.onload=function(){var buf=fr.result,text;
+  if(enc==='auto'){text=new TextDecoder('utf-8',{fatal:false}).decode(buf);
+   if(text.indexOf('receiver_key')<0){try{text=new TextDecoder('euc-kr').decode(buf);}catch(e){}}}
+  else{try{text=new TextDecoder(enc,{fatal:false}).decode(buf);}catch(e){text=new TextDecoder('utf-8',{fatal:false}).decode(buf);}}
+  res(text);};
+ fr.onerror=function(){rej(new Error('파일 읽기 실패'));}; fr.readAsArrayBuffer(file);});}
+document.getElementById('run').onclick=function(){
+ var fs=document.getElementById('files').files; if(!fs.length){status('CSV 파일을 먼저 선택하세요.');return;}
+ var enc=document.getElementById('enc').value; status('읽는 중...');
+ var rows=[],idx=0;
+ function next(){ if(idx>=fs.length){ afterParse(); return; }
+  readFile(fs[idx],enc).then(function(t){
+   var p=Papa.parse(t,{header:true,skipEmptyLines:true,transformHeader:function(h){return h.trim();}});
+   rows=rows.concat(p.data); idx++; next();
+  }).catch(function(e){status('읽기 오류: '+e.message);}); }
+ function afterParse(){
+  if(!rows.length||!(rows[0] && 'receiver_key' in rows[0])){status("receiver_key 컬럼을 못 찾았습니다. 인코딩을 CP949로 바꿔보세요."); return;}
+  status('분석 중... ('+rows.length.toLocaleString()+'행)');
+  setTimeout(function(){ try{ M=compute(rows); initDash(); }catch(e){ status('분석 오류: '+e.message); console.error(e);} },30);}
+ next();
+};
+</script></body></html>
